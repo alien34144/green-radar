@@ -24,12 +24,149 @@
 </header>
 
 <main class="container">
-  <!-- ===== 页面内容（阶段3填充：雷达大屏） ===== -->
-  <section class="card">
-    <h2>雷达大屏</h2>
-    <p class="muted">页面骨架已完成，内容将在阶段3填充。</p>
+
+  <!-- ===== 标题区：左边标题，右边时间选择下拉框 ===== -->
+  <section class="page-head">
+    <div>
+      <h1>充电雷达大屏</h1>
+      <p class="subtitle" id="hourSummary">选择任意时段，看三个场站此刻的忙闲</p>
+    </div>
+    <div class="field">
+      <label for="hourSelect">选择时段（0–23 点）</label>
+      <select id="hourSelect" aria-label="选择时段"></select>
+    </div>
   </section>
+
+  <!-- 数据加载失败时这里会亮起来（默认隐藏） -->
+  <div class="alert"></div>
+
+  <!-- ===== 3 张场站状态卡片（内容由 JS 根据选中的小时生成） ===== -->
+  <section class="station-grid" id="stationCards" aria-live="polite"></section>
+
+  <!-- ===== 并排两张图：柱状图（充电量对比） + 饼图（份额） ===== -->
+  <section class="chart-grid" style="margin-top: 20px;">
+    <div class="card">
+      <div class="card-title">
+        <h2>三站充电量对比</h2>
+        <span class="hint" id="barHint"></span>
+      </div>
+      <div class="chart" id="barChart"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <h2>三站份额占比</h2>
+        <span class="hint" id="pieHint"></span>
+      </div>
+      <div class="chart" id="pieChart"></div>
+    </div>
+  </section>
+
+  <p class="footnote">
+    数据来源：data/fake_charging.csv（3 站 × 24 小时 × 30 天 = 2160 条记录），由 process.py 汇总成 data.json<br>
+    占用率 = 该时段平均订单数 ÷ 该站单小时最高订单数；预计等待为演示用的经验估算
+  </p>
 </main>
+
+<!-- 先引图表库，再引共用函数，最后写这一页自己的逻辑 -->
+<script src="js/echarts.min.js"></script>
+<script src="js/charts.js"></script>
+<script>
+/* =========================================================================
+   雷达大屏页逻辑
+   1. 生成 0-23 点的下拉选项
+   2. 读 data.json
+   3. 选中的小时一变 -> 重画卡片 + 两张图
+   ========================================================================= */
+(function () {
+  "use strict";
+
+  // 页面状态：当前选中的小时、数据。默认停在 18 点（晚高峰，最有看头）
+  var state = { hour: 18, data: null };
+
+  var hourSelect = document.getElementById("hourSelect");
+
+  /* ---------- 1. 生成下拉框选项：0-23 点 ---------- */
+  for (var h = 0; h < 24; h++) {
+    var option = document.createElement("option");
+    option.value = String(h);
+    option.textContent = ChartKit.pad2(h) + ":00 - " + ChartKit.pad2(h) + ":59";
+    hourSelect.appendChild(option);
+  }
+  hourSelect.value = String(state.hour);
+
+  /* ---------- 2. 切换时间：改状态 + 重画 ---------- */
+  hourSelect.addEventListener("change", function () {
+    state.hour = Number(hourSelect.value);
+    render();
+  });
+
+  /* ---------- 3. 读数据（读到了再第一次渲染） ---------- */
+  ChartKit.loadData()
+    .then(function (data) {
+      state.data = data;
+      render();
+    })
+    .catch(function (error) {
+      // 错误提示已经在 ChartKit.loadData 里显示到页面上了
+      console.warn("数据加载失败：", error);
+    });
+
+  /* ---------- 4. 核心渲染函数 ---------- */
+  function render() {
+    var data = state.data;
+    if (!data) return;
+
+    var hour = state.hour;
+    var stations = data.stations;
+    var totalKwh = 0;    // 该时段三站合计充电量
+    var totalOrders = 0; // 该时段三站合计订单数
+
+    // 用数组收集每张卡片的 HTML，最后一次性塞进页面（比逐个 append 快）
+    var cardsHtml = stations.map(function (station) {
+      var ratio = ChartKit.occupancy(data, hour, station);   // 占用率 0~1
+      var status = ChartKit.statusOf(ratio);                 // 空闲/一般/繁忙 + 颜色
+      var wait = ChartKit.waitMinutes(ratio);                // 预计等待分钟
+      var orders = ChartKit.ordersAt(data, hour, station);   // 该时段平均订单数
+      var kwh = ChartKit.kwhAt(data, hour, station);         // 该时段平均充电量
+
+      totalKwh += kwh;
+      totalOrders += orders;
+
+      return [
+        // --state-color 让 css 里的状态色跟着走（进度条、徽标、等待数字都吃这个变量）
+        '<article class="station-card" style="--state-color: ' + status.color + '">',
+        '  <div class="station-top">',
+        '    <h3>' + station + '</h3>',
+        '    <span class="badge"><span class="dot"></span>' + status.label + '</span>',
+        "  </div>",
+        '  <div class="meter"><span style="width: ' + Math.min(100, Math.round(ratio * 100)) + '%"></span></div>',
+        '  <ul class="station-stats">',
+        "    <li><span>占用率</span><strong>" + ChartKit.formatPercent(ratio) + "</strong></li>",
+        "    <li><span>预计订单</span><strong>" + orders.toFixed(1) + " 单</strong></li>",
+        "    <li><span>充电量</span><strong>" + ChartKit.formatNumber(kwh, 1) + " 度</strong></li>",
+        "  </ul>",
+        '  <p class="wait-line">⏱ 预计等待 <b>' + wait + "</b> 分钟 · " + status.advice + "</p>",
+        "</article>"
+      ].join("");
+    }).join("");
+
+    document.getElementById("stationCards").innerHTML = cardsHtml;
+
+    // 标题下面的汇总文案
+    document.getElementById("hourSummary").innerHTML =
+      "当前查看 <b>" + ChartKit.pad2(hour) + ":00 - " + ChartKit.pad2(hour) + ":59</b>" +
+      " ｜ 三站合计 <b>" + ChartKit.formatNumber(totalKwh, 1) + "</b> 度 · <b>" +
+      totalOrders.toFixed(1) + "</b> 单";
+
+    // 两张图：把新的 hour 传进去重新 setOption
+    ChartKit.createBarChart("barChart", data, hour);
+    ChartKit.createPieChart("pieChart", data, hour);
+
+    document.getElementById("barHint").textContent = ChartKit.pad2(hour) + ":00 时段";
+    document.getElementById("pieHint").textContent = "按该时段充电量计算";
+  }
+})();
+</script>
 
 <footer class="site-foot">⚡ 绿能雷达 · AI for Green 充电数据比赛 B 赛道作品 · 数据为模拟演示数据</footer>
 
