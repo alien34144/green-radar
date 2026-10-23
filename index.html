@@ -63,7 +63,7 @@
 
   <p class="footnote">
     数据来源：data/fake_charging.csv（3 站 × 24 小时 × 30 天 = 2160 条记录），由 process.py 汇总成 data.json<br>
-    占用率 = 该时段平均订单数 ÷ 该站单小时最高订单数；预计等待为演示用的经验估算
+    占用率 = 该时段平均订单数 ÷ 全网单小时最高订单数（100% = 全网最忙的那一小时）；预计等待为演示用的经验估算
   </p>
 </main>
 
@@ -128,6 +128,7 @@
       var wait = ChartKit.waitMinutes(ratio);                // 预计等待分钟
       var orders = ChartKit.ordersAt(data, hour, station);   // 该时段平均订单数
       var kwh = ChartKit.kwhAt(data, hour, station);         // 该时段平均充电量
+      var month = data.overview[station] || {};              // 本月累计（来自 overview）
 
       totalKwh += kwh;
       totalOrders += orders;
@@ -145,6 +146,10 @@
         "    <li><span>预计订单</span><strong>" + orders.toFixed(1) + " 单</strong></li>",
         "    <li><span>充电量</span><strong>" + ChartKit.formatNumber(kwh, 1) + " 度</strong></li>",
         "  </ul>",
+        // 这一行用的是"整月累计"数据（overview），说明这个站平时有多忙
+        '  <p class="month-line">本月累计 ' + ChartKit.formatNumber(month["充电量"] || 0, 0) + " 度 · " +
+        ChartKit.formatNumber(month["订单数"] || 0, 0) + " 单 · 忙闲度 " +
+        (typeof month["忙闲度"] === "number" ? month["忙闲度"].toFixed(2) : "—") + "</p>",
         '  <p class="wait-line">⏱ 预计等待 <b>' + wait + "</b> 分钟 · " + status.advice + "</p>",
         "</article>"
       ].join("");

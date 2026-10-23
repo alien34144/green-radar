@@ -78,9 +78,11 @@
     var stations = data.stations;
     var orders = ordersFor(data, weekday, hour);
 
-    // 占用率 = 该时段平均订单数 ÷ 该站单小时最高订单数
+    // 占用率 = 该时段平均订单数 ÷ 全网单小时最高订单数（和雷达大屏用同一个分母，口径统一）
+    var peakGlobal = data.capacityGlobal;
     var ratios = orders.map(function (value, index) {
-      var peak = data.capacity[stations[index]] || 1;
+      // 优先用全网分母；万一数据里没有，就退回该站自己的峰值，保证不会崩
+      var peak = (peakGlobal && peakGlobal > 0) ? peakGlobal : (data.capacity[stations[index]] || 1);
       var ratio = value / peak;
       return isFinite(ratio) && ratio > 0 ? ratio : 0;
     });
@@ -96,17 +98,27 @@
 
     if (allSame) {
       // 三站一样闲（或一样忙），没必要纠结，随便哪一站都行
-      mainEl.innerHTML = "任意一站均可";
-      subEl.textContent = "这个时段三站占用率完全一样，去最近的就行。";
+      mainEl.innerHTML = "<span class=\"result-station\">任意一站均可</span>";
+      subEl.textContent = "这个时段三站占用率完全一样，去最近的那一站就行。";
     } else {
-      mainEl.innerHTML = "推荐去<span class=\"station-name\">「" + bestStation + "」</span>，预计等待约 " + wait + " 分钟";
+      // 两行排版：第一行"推荐去哪站"，第二行"大概等多久"，避免长句换行难看
+      mainEl.innerHTML =
+        "<span class=\"result-station\">推荐去<span class=\"station-name\">「" + bestStation + "」</span></span>" +
+        "<span class=\"result-wait\">预计等待约 " + wait + " 分钟</span>";
+
       // 如果还有别的站一样空，也顺手告诉用户，更贴心
       var sameBest = stations.filter(function (s, i) {
         return i !== bestIndex && Math.abs(ratios[i] - minRatio) < 1e-6;
       });
-      subEl.textContent = sameBest.length
-        ? "「" + sameBest.join("」「") + "」同样空闲，就近选择也可以。"
-        : "这个时段是 " + weekday + " " + ChartKit.pad2(Number(hour)) + ":00，占用率越低越不用等。";
+
+      if (minRatio >= 0.85) {
+        // 三站都很忙的时候，诚实一点：建议错峰
+        subEl.textContent = "这个时段三站都比较忙（最空的也有 " + ChartKit.formatPercent(minRatio) + "），建议错峰到 22:00 之后或次日早上。";
+      } else if (sameBest.length) {
+        subEl.textContent = "「" + sameBest.join("」「") + "」同样空闲，就近选择也可以。";
+      } else {
+        subEl.textContent = "这个时段是 " + weekday + " " + ChartKit.pad2(Number(hour)) + ":00，占用率越低越不用等。";
+      }
     }
 
     /* ---------- 4.1 三站占用率对比小条 ---------- */

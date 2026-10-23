@@ -75,7 +75,7 @@
 
       <div class="pile" id="pileB">
         <p class="pile-name">3 号桩 · 快充</p>
-        <p class="countdown" id="countdownB">--:--</p>
+        <p class="countdown" id="countdownB">8 分钟</p>
         <p class="pile-state" id="pileBState">等待中</p>
       </div>
 
@@ -266,7 +266,7 @@
 
     setPileState(el.pileB, "is-idle");
     el.pileBState.textContent = "充电中 · 已开始";
-    el.countdownB.textContent = "00:00";
+    el.countdownB.textContent = "已开始";
     el.queueBadge.textContent = "已完成接力 · 正在充电";
     el.relayBtn.disabled = true;
     el.relayBtn.textContent = "✅ 已接力成功";
@@ -311,7 +311,7 @@
 
     setPileState(el.pileB, null);
     el.pileBState.textContent = "等待中";
-    el.countdownB.textContent = "--:--";
+    el.countdownB.textContent = "8 分钟";
     el.queueBadge.textContent = "排队中 · 前面还有 1 位";
     el.relayBtn.disabled = false;
     el.relayBtn.textContent = "⚡ 点击接力预约";

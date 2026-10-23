@@ -108,12 +108,18 @@ var ChartKit = (function () {
   }
 
   /**
-   * 占用率 = 该小时订单数 ÷ 该站单小时最高订单数（capacity）。
-   * 为什么用 capacity 当分母？因为它来自真实 CSV 统计，不是我拍脑袋编的常数；
-   * 这样 1.0 就代表"这个站最忙的那一小时"。
+   * 占用率 = 该小时订单数 ÷ 全网单小时最高订单数（capacityGlobal）。
+   *
+   * 为什么不用"每个站自己的峰值"当分母？
+   *   那样三个站在同一时刻都会算成 100%，大屏上永远是"三站全红"，看不出谁忙谁闲。
+   *   统一分母后 100% 就代表"全网最忙的那一小时"，同一时刻三站才能横向比较。
    */
   function occupancy(data, hour, station) {
-    var peak = data.capacity && data.capacity[station] ? data.capacity[station] : 1;
+    var peak = data.capacityGlobal;
+    if (!peak || !isFinite(peak) || peak <= 0) {
+      // 兼容旧版 data.json（只有按站 capacity 的情况）
+      peak = data.capacity && data.capacity[station] ? data.capacity[station] : 1;
+    }
     var ratio = ordersAt(data, hour, station) / peak;
     if (!isFinite(ratio) || ratio < 0) ratio = 0;
     return Math.min(ratio, 1.2); // 留一点余量，防止极端数据把进度条撑爆
@@ -121,13 +127,13 @@ var ChartKit = (function () {
 
   /**
    * 把占用率翻译成"忙闲状态 + 颜色 + 文案"。
-   * 阈值：< 45% 空闲（绿） / < 75% 一般（黄） / 其余繁忙（红）
+   * 阈值：< 45% 空闲（绿） / < 85% 一般（黄） / 其余繁忙（红）
    */
   function statusOf(ratio) {
     if (ratio < 0.45) {
       return { key: "idle", label: "空闲", color: THEME.green, advice: "随到随充，几乎不用等" };
     }
-    if (ratio < 0.75) {
+    if (ratio < 0.85) {
       return { key: "normal", label: "一般", color: THEME.yellow, advice: "可能排队 1 台车" };
     }
     return { key: "busy", label: "繁忙", color: THEME.red, advice: "建议换个时段或换一站" };
@@ -325,7 +331,7 @@ var ChartKit = (function () {
       grid: { left: 8, right: 56, top: 20, bottom: 8, containLabel: true },
       xAxis: {
         type: "value",
-        max: 1.2,
+        max: 1.1,
         splitLine: { lineStyle: { color: "#eef6f1" } },
         axisLabel: { color: THEME.text, fontSize: 12, formatter: function (v) { return Math.round(v * 100) + "%"; } }
       },

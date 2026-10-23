@@ -73,7 +73,7 @@
       </div>
       <div class="steps" style="grid-template-columns: 1fr; margin-top: 0;">
         <div class="step"><b>① 取历史数据</b>从 data.json 的 weekdayHourly 里，取出"这个周几、这个小时"三个站的平均订单数。</div>
-        <div class="step"><b>② 换算占用率</b>占用率 = 该时段订单数 ÷ 该站单小时最高订单数（capacity）。</div>
+        <div class="step"><b>② 换算占用率</b>占用率 = 该时段订单数 ÷ 全网单小时最高订单数，100% 就是全网最忙的那一小时。</div>
         <div class="step"><b>③ 挑最低的那个</b>占用率最低 = 最不用排队，直接推荐它。</div>
       </div>
       <p class="muted" id="orderNote" style="margin: 14px 0 0; font-size: 12.5px; line-height: 1.7;"></p>
@@ -81,7 +81,7 @@
   </section>
 
   <p class="footnote">
-    占用率 100% = 该站最忙的那一小时；预测基于 30 天历史平均，实际以现场为准
+    占用率 100% = 全网最忙的那一小时；预测基于 30 天历史平均，实际以现场为准
   </p>
 </main>
 

@@ -201,11 +201,19 @@ def build_data(records, meta_extra):
             hourly[hour_key][station] = round(hour_orders[hour_key][station] / day_count, 1)
             hourly_kwh[hour_key][station] = round(hour_kwh[hour_key][station] / day_count, 1)
 
-    # ---------------- 每个站"单小时最高订单数"，当作占用率的分母（容量） ----------------
+    # ---------------- 每个站"单小时最高订单数" ----------------
+    # 这是该站自己的峰值，用来描述"这个站自己最忙的时候有多忙"
     capacity = {}
     for station in stations:
         peak = max(hour_orders[str(h)][station] for h in range(24)) / day_count
         capacity[station] = round(peak, 1) if peak > 0 else 1.0
+
+    # ---------------- 全网单小时最高订单数（占用率的统一分母） ----------------
+    # 为什么要有这个"全网"值？
+    #   如果拿每个站自己的峰值当分母，那三个站在同一时刻都会算成 ~100%，
+    #   大屏上就永远是"三站全红"，看不出谁忙谁闲。
+    #   统一分母之后，占用率才能横向比较：100% = 全网最忙的那一个小时。
+    capacity_global = round(max(capacity.values()), 1) if capacity else 1.0
 
     # ---------------- 周几 × 小时 的平均订单数 ----------------
     weekday_hourly = {}
@@ -237,7 +245,8 @@ def build_data(records, meta_extra):
         "hourly": hourly,              # 小时 -> 站 -> 平均订单数
         "carbon": carbon,              # 碳账本用
         "hourlyKwh": hourly_kwh,       # 小时 -> 站 -> 平均充电量（柱状图用）
-        "capacity": capacity,          # 各站单小时最高订单数（算占用率的分母）
+        "capacity": capacity,          # 各站单小时最高订单数（描述"这个站自己最忙时有多忙"）
+        "capacityGlobal": capacity_global,  # 全网单小时最高订单数（占用率的统一分母）
         "weekdayHourly": weekday_hourly,  # 周几 -> 小时 -> 站 -> 平均订单数
         "meta": dict(
             {
@@ -247,7 +256,7 @@ def build_data(records, meta_extra):
                 "天数": day_count,
                 "场站数": len(stations),
                 "日期范围": "%s ~ %s" % (min(days).isoformat(), max(days).isoformat()),
-                "说明": "hourly/hourlyKwh 为跨天平均的典型一天；capacity 为各站单小时最高订单数；碳系数 0.5kg/度，单树 18kg/年",
+                "说明": "hourly/hourlyKwh 为跨天平均的典型一天；capacity 为各站单小时最高订单数，capacityGlobal 为全网单小时最高订单数（占用率分母）；碳系数 0.5kg/度，单树 18kg/年",
             },
             **meta_extra
         ),
