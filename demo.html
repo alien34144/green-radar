@@ -23,12 +23,316 @@
 </header>
 
 <main class="container">
-  <!-- ===== 页面内容（阶段6填充：防占位演示） ===== -->
-  <section class="card">
-    <h2>防占位演示</h2>
-    <p class="muted">页面骨架已完成，内容将在阶段6填充。</p>
+
+  <!-- ===== 标题区 + 重新播放按钮 ===== -->
+  <section class="page-head">
+    <div>
+      <h1>防占位演示</h1>
+      <p class="subtitle">充电桩被"充满不挪车"霸占怎么办？用接力预约 + 宽限倒计时把桩"挤"出来</p>
+    </div>
+    <button class="btn-ghost" id="replayBtn" type="button">▶ 重新播放</button>
   </section>
+
+  <!-- ===== 左右分栏：车主A（占位中） / 车主B（排队中） ===== -->
+  <section class="demo-grid">
+
+    <!-- 左：车主 A -->
+    <article class="actor-card">
+      <div class="actor-head">
+        <div class="avatar">A</div>
+        <div>
+          <h3>车主 A</h3>
+          <p>电已充满，车还停在桩上</p>
+        </div>
+      </div>
+
+      <div class="pile is-occupied" id="pileA">
+        <p class="pile-name">3 号桩 · 快充</p>
+        <p class="countdown" id="countdown">05:00</p>
+        <p class="pile-state" id="pileAState">占位中 · 宽限倒计时</p>
+      </div>
+
+      <p class="tip" id="tipA">⚠️ 充满后 5 分钟内挪车免费；超时开始按 <b>¥2/分钟</b> 计费。</p>
+
+      <ul class="station-stats">
+        <li><span>碳积分</span><strong id="scoreA">1280</strong></li>
+        <li><span>信用分</span><strong id="creditA">100</strong></li>
+        <li><span>本次费用</span><strong id="feeA">¥0</strong></li>
+      </ul>
+    </article>
+
+    <!-- 右：车主 B -->
+    <article class="actor-card">
+      <div class="actor-head">
+        <div class="avatar">B</div>
+        <div>
+          <h3>车主 B</h3>
+          <p>电量 12%，急需充电赶路</p>
+        </div>
+      </div>
+
+      <span class="queue-badge" id="queueBadge">排队中 · 前面还有 1 位</span>
+
+      <div class="pile" id="pileB">
+        <p class="pile-name">3 号桩 · 快充</p>
+        <p class="countdown" id="countdownB">--:--</p>
+        <p class="pile-state" id="pileBState">等待中</p>
+      </div>
+
+      <button class="big-cta" id="relayBtn" type="button">⚡ 点击接力预约</button>
+
+      <p class="tip is-good" id="tipB">接力预约 = 把"已经充满还占着桩"的车位，转给后面真正需要充电的人。</p>
+    </article>
+  </section>
+
+  <!-- ===== 弹窗（默认隐藏，由 JS 控制显示/变色） ===== -->
+  <div class="modal-mask" id="modalMask" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal" id="modal">
+      <h3 id="modalTitle">有人急需充电，请 5 分钟内挪车</h3>
+      <p id="modalBody">车主 B 电量仅剩 12%，已经在 3 号桩排队等待。</p>
+      <p class="score" id="modalScore" style="display: none;">+100 积分</p>
+
+      <!-- 两个选择：挪车 / 不挪 -->
+      <div class="modal-actions" id="choiceActions">
+        <button class="btn" id="moveBtn" type="button">🚗 我马上挪车</button>
+        <button class="btn btn-danger" id="rejectBtn" type="button">我不挪</button>
+      </div>
+
+      <!-- 结果出来后只留一个"知道了" -->
+      <div class="modal-actions" id="closeActions" style="display: none;">
+        <button class="btn-ghost" id="closeBtn" type="button">知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 剧本说明（给评委看的三步） ===== -->
+  <section class="steps">
+    <div class="step"><b>① 占位发生</b>车主 A 充满后没有挪车，页面开始 5 分钟宽限倒计时，超时按 ¥2/分钟计费。</div>
+    <div class="step"><b>② 接力预约</b>车主 B 点击接力预约，系统立刻给车主 A 推送"请 5 分钟内挪车"的通知。</div>
+    <div class="step"><b>③ 双向激励</b>挪车 → 桩变绿、+100 碳积分；不挪 → 信用分 -50、继续计费。用积分和信用把"占位成本"摆到明面上。</div>
+  </section>
+
+  <p class="footnote">
+    本页是纯前端交互原型（不需要后端），桩位、积分、信用分均为演示用模拟数据
+  </p>
 </main>
+
+<script src="js/echarts.min.js"></script>
+<script src="js/charts.js"></script>
+<script>
+/* =========================================================================
+   防占位演示页逻辑（纯前端，不需要后端）
+   状态机：grace（宽限中） -> handoff（已接力） / overtime（超时计费）
+            -> handoff 后：挪车（+100 积分）或 不挪（-50 信用分）
+   ========================================================================= */
+(function () {
+  "use strict";
+
+  var GRACE_SECONDS = 300;      // 宽限时间：5 分钟 = 300 秒
+  var RELAY_WINDOW = 300;       // 给车主 A 的挪车时限（秒），演示用固定 5:00
+
+  // 页面状态
+  var state = {
+    remain: GRACE_SECONDS,  // 宽限倒计时剩余秒数
+    fee: 0,                 // 累计超时费用
+    credit: 100,            // 信用分
+    score: 1280,            // 碳积分
+    phase: "grace",         // grace / handoff / penalized
+    timer: null
+  };
+
+  // 把所有要操作的 DOM 抓出来（抓一次，后面反复用）
+  var el = {
+    countdown: document.getElementById("countdown"),
+    pileA: document.getElementById("pileA"),
+    pileAState: document.getElementById("pileAState"),
+    pileB: document.getElementById("pileB"),
+    pileBState: document.getElementById("pileBState"),
+    countdownB: document.getElementById("countdownB"),
+    queueBadge: document.getElementById("queueBadge"),
+    tipA: document.getElementById("tipA"),
+    scoreA: document.getElementById("scoreA"),
+    creditA: document.getElementById("creditA"),
+    feeA: document.getElementById("feeA"),
+    relayBtn: document.getElementById("relayBtn"),
+    replayBtn: document.getElementById("replayBtn"),
+    mask: document.getElementById("modalMask"),
+    modal: document.getElementById("modal"),
+    modalTitle: document.getElementById("modalTitle"),
+    modalBody: document.getElementById("modalBody"),
+    modalScore: document.getElementById("modalScore"),
+    choiceActions: document.getElementById("choiceActions"),
+    closeActions: document.getElementById("closeActions"),
+    moveBtn: document.getElementById("moveBtn"),
+    rejectBtn: document.getElementById("rejectBtn"),
+    closeBtn: document.getElementById("closeBtn")
+  };
+
+  /* ---------- 小工具 ---------- */
+  /** 秒 -> "mm:ss" */
+  function formatTime(totalSeconds) {
+    var m = Math.floor(totalSeconds / 60);
+    var s = totalSeconds % 60;
+    return (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s);
+  }
+
+  /** 切换桩的样式类（三种状态互斥） */
+  function setPileState(pile, className) {
+    pile.classList.remove("is-idle", "is-occupied", "is-warn");
+    if (className) pile.classList.add(className);
+  }
+
+  /* ---------- 1. 倒计时 ---------- */
+  function startTimer() {
+    clearInterval(state.timer);
+    state.timer = setInterval(function () {
+      state.remain = Math.max(0, state.remain - 1);
+      el.countdown.textContent = formatTime(state.remain);
+      if (state.remain === 0) onOvertime();
+    }, 1000);
+  }
+
+  /** 宽限时间用完：开始超时计费 */
+  function onOvertime() {
+    if (state.phase !== "grace") return;
+    state.phase = "penalized";
+    clearInterval(state.timer);
+    setPileState(el.pileA, "is-warn");
+    el.pileAState.textContent = "已超时 · 正在计费";
+    el.tipA.textContent = "⏰ 已超过宽限时间，超时费 ¥2/分钟，将自动从账户扣除。";
+  }
+
+  /* ---------- 2. 弹窗控制 ---------- */
+  /**
+   * @param {"ask"|"good"|"bad"} kind  ask=向车主A发挪车请求 good=挪车成功 bad=拒绝挪车
+   */
+  function showModal(kind) {
+    el.mask.classList.add("show");
+    el.modal.classList.remove("is-good", "is-bad");
+    el.modalScore.style.display = "none";
+    el.choiceActions.style.display = "none";
+    el.closeActions.style.display = "none";
+
+    if (kind === "ask") {
+      // 第一阶段：有人急需充电，请挪车（红色，两个按钮）
+      el.modal.classList.add("is-bad");
+      el.modalTitle.textContent = "有人急需充电，请 5 分钟内挪车";
+      el.modalBody.textContent = "车主 B 电量仅剩 12%，已经在 3 号桩排队。挪车可以获得 100 碳积分。";
+      el.choiceActions.style.display = "flex";
+    } else if (kind === "good") {
+      // 第二阶段 A：文明挪车，奖励积分（绿色）
+      el.modal.classList.add("is-good");
+      el.modalTitle.textContent = "文明挪车 +100 碳积分";
+      el.modalBody.textContent = "车主 B 已开始充电，你把 3 号桩让给了更需要的人。";
+      el.modalScore.textContent = "+100 积分";
+      el.modalScore.style.display = "block";
+      el.closeActions.style.display = "flex";
+    } else {
+      // 第二阶段 B：拒绝挪车，扣费扣分（红色）
+      el.modal.classList.add("is-bad");
+      el.modalTitle.textContent = "超时扣费 ¥2/分钟";
+      el.modalBody.textContent = "信用分 -50，本次占位费用将在离场时一起结算。";
+      el.modalScore.textContent = "-50 信用分";
+      el.modalScore.style.display = "block";
+      el.closeActions.style.display = "flex";
+    }
+  }
+
+  function hideModal() {
+    el.mask.classList.remove("show");
+  }
+
+  /* ---------- 3. 车主 B 点"接力预约" ---------- */
+  function onRelay() {
+    if (state.phase === "handoff") return; // 已经在充电了，别重复点
+    showModal("ask");
+    // 给桩 A 一个"被催促"的提示色
+    if (state.phase === "grace") {
+      setPileState(el.pileA, "is-warn");
+      el.pileAState.textContent = "被催挪车 · 倒计时中";
+    }
+  }
+
+  /* ---------- 4. 车主 A 选择"我马上挪车" ---------- */
+  function onMove() {
+    state.phase = "handoff";
+    clearInterval(state.timer);
+
+    // 桩让出来了：变绿 + 车主 B 开始充电
+    setPileState(el.pileA, "is-idle");
+    el.pileAState.textContent = "已挪车 · 桩已空闲";
+    el.countdown.textContent = formatTime(Math.max(0, state.remain));
+    el.tipA.textContent = "✅ 文明挪车已记录，本次免收占位费，碳积分 +100。";
+
+    setPileState(el.pileB, "is-idle");
+    el.pileBState.textContent = "充电中 · 已开始";
+    el.countdownB.textContent = "00:00";
+    el.queueBadge.textContent = "已完成接力 · 正在充电";
+    el.relayBtn.disabled = true;
+    el.relayBtn.textContent = "✅ 已接力成功";
+
+    // 积分 +100，信用分不变
+    state.score += 100;
+    el.scoreA.textContent = String(state.score);
+
+    showModal("good");
+  }
+
+  /* ---------- 5. 车主 A 选择"我不挪" ---------- */
+  function onReject() {
+    state.phase = "penalized";
+    clearInterval(state.timer);
+
+    setPileState(el.pileA, "is-occupied");
+    el.pileAState.textContent = "仍占位 · 超时计费中";
+    el.tipA.textContent = "⏰ 超时费 ¥2/分钟已开始累计，信用分同步扣减。";
+
+    // 信用分 -50
+    state.credit = Math.max(0, state.credit - 50);
+    el.creditA.textContent = String(state.credit);
+
+    showModal("bad");
+  }
+
+  /* ---------- 6. 重新播放：把所有东西恢复初始值 ---------- */
+  function reset() {
+    clearInterval(state.timer);
+    state.remain = GRACE_SECONDS;
+    state.fee = 0;
+    state.credit = 100;
+    state.score = 1280;
+    state.phase = "grace";
+
+    hideModal();
+    setPileState(el.pileA, "is-occupied");
+    el.pileAState.textContent = "占位中 · 宽限倒计时";
+    el.countdown.textContent = formatTime(GRACE_SECONDS);
+    el.tipA.innerHTML = "⚠️ 充满后 5 分钟内挪车免费；超时开始按 <b>¥2/分钟</b> 计费。";
+
+    setPileState(el.pileB, null);
+    el.pileBState.textContent = "等待中";
+    el.countdownB.textContent = "--:--";
+    el.queueBadge.textContent = "排队中 · 前面还有 1 位";
+    el.relayBtn.disabled = false;
+    el.relayBtn.textContent = "⚡ 点击接力预约";
+
+    el.scoreA.textContent = String(state.score);
+    el.creditA.textContent = String(state.credit);
+    el.feeA.textContent = "¥0";
+
+    startTimer();
+  }
+
+  /* ---------- 7. 绑定事件 + 启动 ---------- */
+  el.relayBtn.addEventListener("click", onRelay);
+  el.moveBtn.addEventListener("click", onMove);
+  el.rejectBtn.addEventListener("click", onReject);
+  el.closeBtn.addEventListener("click", hideModal);
+  el.replayBtn.addEventListener("click", reset);
+
+  reset(); // 页面打开就进入"倒计时中"的状态
+})();
+</script>
 
 <footer class="site-foot">⚡ 绿能雷达 · AI for Green 充电数据比赛 B 赛道作品 · 数据为模拟演示数据</footer>
 
