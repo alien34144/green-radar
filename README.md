@@ -1,10 +1,11 @@
-﻿# ⚡ 绿能雷达（Green Radar）
+# ⚡ 绿能雷达（Green Radar）
 
 > 把一份充电数据，变成"看得懂、用得上、还能算碳"的绿色出行工具。
 
 **AI for Green 充电数据比赛 · B 赛道（开放创新）参赛作品**
 
-线上体验地址：**待发布**（GitHub Pages 部署后填入）
+线上体验地址：**<https://alien34144.github.io/green-radar/>**
+（GitHub 仓库：<https://github.com/alien34144/green-radar>）
 
 ---
 
@@ -140,6 +141,7 @@ python -m http.server 8000
 | 页面 JS 逻辑（卡片渲染 / 推荐结果 / 数字动画 / 弹窗交互） | ✅ 68 项断言全部通过 |
 | 4 页导航互跳 | ✅ 高亮正确，无死链 |
 | 浏览器控制台 | ✅ 无报错 |
+| 线上 Pages 验收（从公网下载 11 个资源后重跑断言） | ✅ 全部 200，68 项断言通过，`data.json` 复算结果一致 |
 
 ---
 
