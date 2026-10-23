@@ -23,12 +23,154 @@
 </header>
 
 <main class="container">
-  <!-- ===== 页面内容（阶段5填充：碳账本） ===== -->
-  <section class="card">
-    <h2>碳账本</h2>
-    <p class="muted">页面骨架已完成，内容将在阶段5填充。</p>
+
+  <!-- ===== 标题区 ===== -->
+  <section class="page-head">
+    <div>
+      <h1>碳账本</h1>
+      <p class="subtitle" id="rangeNote">这一个月，三个场站一共减少了多少碳排放？</p>
+    </div>
   </section>
+
+  <div class="alert"></div>
+
+  <!-- ===== 3 个超大数字卡片（数字由 JS 从 0 滚动上去） ===== -->
+  <section class="stat-grid" id="statNumbers">
+    <article class="stat-card">
+      <span class="stat-icon">🔌</span>
+      <p class="stat-label">累计充电</p>
+      <p class="stat-value"><span class="count" id="countKwh">0</span><span class="stat-unit">度</span></p>
+      <p class="stat-note">3 个场站 · 30 天 · 全部来自充电记录汇总</p>
+    </article>
+
+    <article class="stat-card">
+      <span class="stat-icon">🌿</span>
+      <p class="stat-label">等效减少 CO₂</p>
+      <p class="stat-value"><span class="count" id="countCarbon">0</span><span class="stat-unit">kg</span></p>
+      <p class="stat-note">按 1 度电 = 0.5kg 二氧化碳计算</p>
+    </article>
+
+    <article class="stat-card">
+      <span class="stat-icon">🌳</span>
+      <p class="stat-label">等效种树</p>
+      <p class="stat-value"><span class="count" id="countTree">0</span><span class="stat-unit">棵</span></p>
+      <p class="stat-note">按一棵树一年吸收 18kg 二氧化碳折算</p>
+    </article>
+  </section>
+
+  <!-- ===== 年度减排目标进度条 ===== -->
+  <section class="card">
+    <div class="progress-head">
+      <h2>年度减排目标</h2>
+      <span class="percent"><span id="percentNum">0</span>%</span>
+    </div>
+    <div class="progress" id="progressBar">
+      <span id="progressFill"></span>
+    </div>
+    <div class="progress-foot">
+      <span>已减排 <b id="doneText">0</b> kg</span>
+      <span>目标 100,000 kg</span>
+    </div>
+    <p class="muted" style="margin: 14px 0 0; font-size: 12.5px;">
+      目标值 100000kg 是比赛演示用的假设目标；达成率 = 已减排量 ÷ 目标值。
+    </p>
+  </section>
+
+  <!-- ===== 底部金句 ===== -->
+  <p class="quote" id="quote">
+    一度电少排一斤碳
+    <small>0.5kg CO₂ ÷ 1kWh —— 这就是本项目碳核算的口径，也是"绿能雷达"想做的事</small>
+  </p>
+
+  <p class="footnote">
+    数据来源：data.json 的 carbon 字段（由 process.py 从 2160 条充电记录汇总而来）
+  </p>
 </main>
+
+<script src="js/echarts.min.js"></script>
+<script src="js/charts.js"></script>
+<script>
+/* =========================================================================
+   碳账本页逻辑
+   1. 从 data.json 读 carbon 三个数字
+   2. 用 requestAnimationFrame 做"从 0 滚动上涨"的动画
+   3. 进度条按 已减排 ÷ 100000 展开
+   ========================================================================= */
+(function () {
+  "use strict";
+
+  var GOAL_KG = 100000; // 年度减排目标（演示用假设值，单位 kg）
+
+  /**
+   * 数字滚动动画
+   * @param {HTMLElement} el       要变化的元素
+   * @param {number} target        最终值
+   * @param {number} decimals      保留几位小数
+   * @param {number} duration      动画时长（毫秒）
+   */
+  function countUp(el, target, decimals, duration) {
+    var startTime = null;
+    function step(now) {
+      if (startTime === null) startTime = now;
+      var progress = Math.min(1, (now - startTime) / duration);
+      // easeOutCubic：开头快、结尾慢，看起来更"高级"
+      var eased = 1 - Math.pow(1 - progress, 3);
+      var current = target * eased;
+      el.textContent = ChartKit.formatNumber(current, decimals);
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        el.textContent = ChartKit.formatNumber(target, decimals); // 收尾时精确等于目标值
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  ChartKit.loadData()
+    .then(function (data) {
+      var carbon = data.carbon;
+
+      // ---- 1. 三个大数字：先写 data-target（方便调试/测试），再启动滚动动画 ----
+      // 元素 id -> data.json 里的字段名，一一对应，改数据不用改结构
+      var targets = [
+        { id: "countKwh", key: "总充电量", decimals: 0 },
+        { id: "countCarbon", key: "减排kg", decimals: 0 },
+        { id: "countTree", key: "等效种树", decimals: 0 }
+      ];
+
+      targets.forEach(function (item) {
+        var el = document.getElementById(item.id);
+        if (!el) return; // 元素不存在就跳过，避免整页报错
+        var value = carbon[item.key];
+        if (typeof value !== "number") value = 0; // 数据缺失时显示 0，而不是 NaN
+        el.setAttribute("data-target", String(value));
+        countUp(el, value, item.decimals, 1600);
+      });
+
+      // ---- 2. 进度条 ----
+      var percent = Math.min(100, (carbon["减排kg"] / GOAL_KG) * 100);
+      var fill = document.getElementById("progressFill");
+      var percentNum = document.getElementById("percentNum");
+      var doneText = document.getElementById("doneText");
+
+      // 先设 0 再设真实值，宽度变化才会触发 css 里的 transition 动画
+      fill.style.width = "0%";
+      requestAnimationFrame(function () {
+        fill.style.width = percent.toFixed(2) + "%";
+      });
+
+      // 右上角的百分比数字也跟着从 0 滚上去
+      countUp(percentNum, percent, 1, 1600);
+
+      doneText.textContent = ChartKit.formatNumber(carbon["减排kg"], 0);
+      document.getElementById("rangeNote").textContent =
+        "数据范围：" + data.meta["日期范围"] + " · " + data.meta["场站数"] + " 个场站 · 共 " + data.meta["记录数"] + " 条充电记录";
+    })
+    .catch(function (error) {
+      console.warn("数据加载失败：", error);
+    });
+})();
+</script>
 
 <footer class="site-foot">⚡ 绿能雷达 · AI for Green 充电数据比赛 B 赛道作品 · 数据为模拟演示数据</footer>
 
