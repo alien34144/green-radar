@@ -23,12 +23,71 @@
 </header>
 
 <main class="container">
-  <!-- ===== 页面内容（阶段4填充：预约推荐） ===== -->
-  <section class="card">
-    <h2>预约推荐</h2>
-    <p class="muted">页面骨架已完成，内容将在阶段4填充。</p>
+
+  <!-- ===== 标题区 ===== -->
+  <section class="page-head">
+    <div>
+      <h1>预约推荐</h1>
+      <p class="subtitle" id="dataNote">选好周几和几点，绿能雷达帮你挑最不用等的那一站</p>
+    </div>
   </section>
+
+  <div class="alert"></div>
+
+  <!-- ===== 两个下拉框 + 开始推荐按钮 ===== -->
+  <section class="card">
+    <div class="control-bar">
+      <div class="field">
+        <label for="weekdaySelect">周几</label>
+        <select id="weekdaySelect" aria-label="选择周几"></select>
+      </div>
+      <div class="field">
+        <label for="hourSelect">几点（0–23 点）</label>
+        <select id="hourSelect" aria-label="选择小时"></select>
+      </div>
+      <button class="btn" id="recommendBtn" type="button">开始推荐</button>
+    </div>
+  </section>
+
+  <!-- ===== 推荐结果：中间超大字号 ===== -->
+  <section class="result-card" id="resultBox" aria-live="polite">
+    <p class="result-label">推 荐 结 果</p>
+    <p class="result-main" id="resultMain">点击「开始推荐」</p>
+    <p class="result-sub" id="resultSub">先选周几和几点，再点上面的按钮</p>
+    <div class="compare" id="compareChips"></div>
+  </section>
+
+  <!-- ===== 左边横向条形图，右边解释数据怎么来的 ===== -->
+  <section class="chart-grid" style="margin-top: 20px;">
+    <div class="card">
+      <div class="card-title">
+        <h2>三站该时段占用率</h2>
+        <span class="hint" id="hbarHint"></span>
+      </div>
+      <div class="chart" id="hbarChart" style="height: 260px;"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <h2>为什么这样推荐？</h2>
+        <span class="hint">3 步算完</span>
+      </div>
+      <div class="steps" style="grid-template-columns: 1fr; margin-top: 0;">
+        <div class="step"><b>① 取历史数据</b>从 data.json 的 weekdayHourly 里，取出"这个周几、这个小时"三个站的平均订单数。</div>
+        <div class="step"><b>② 换算占用率</b>占用率 = 该时段订单数 ÷ 该站单小时最高订单数（capacity）。</div>
+        <div class="step"><b>③ 挑最低的那个</b>占用率最低 = 最不用排队，直接推荐它。</div>
+      </div>
+      <p class="muted" id="orderNote" style="margin: 14px 0 0; font-size: 12.5px; line-height: 1.7;"></p>
+    </div>
+  </section>
+
+  <p class="footnote">
+    占用率 100% = 该站最忙的那一小时；预测基于 30 天历史平均，实际以现场为准
+  </p>
 </main>
+
+<script src="js/echarts.min.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/recommend.js"></script>
 
 <footer class="site-foot">⚡ 绿能雷达 · AI for Green 充电数据比赛 B 赛道作品 · 数据为模拟演示数据</footer>
 
